@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Cada usuario solo puede leer y escribir su propio documento,
+    // y solo esta cuenta de Google puede usar la app.
+    match /users/{uid} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.email == "demiancurutchet91@gmail.com"
+        && request.auth.token.email_verified == true;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
