@@ -232,7 +232,7 @@ details.more .tbl-wrap{margin-top:10px}
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const LSKEY='proximo-resumen-v1';
-const APP_VERSION='1.2.2'; // 1.2.2 fecha de pago automática, nota al crear, tope explicado · 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
+const APP_VERSION='1.2.3'; // 1.2.3 aviso de vencimiento desde 2 días antes · 1.2.2 fecha de pago automática, nota al crear, tope explicado · 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
 const COLORS=['#2B55C9','#C2541B','#1F8A6A','#8A4FB8'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
@@ -382,7 +382,7 @@ function alertas(){
   const out=[];
   S.tarjetas.forEach(t=>{
     const k=abiertoDe(t)-1;const v=venceDe(t,k);const d=diasHasta(v);const key=t.id+'_'+k;
-    if(d<-3||S.pagados[key])return;
+    if(d>2||d<-3||S.pagados[key])return; // aparece desde 2 días antes del vencimiento
     const real=t.cerrados&&t.cerrados[k];const tt=real||totales(cargos(t,k));if(!tt.ars&&!tt.usd)return;
     const cuando=d<0?`Venció hace ${-d} día${d===-1?'':'s'}`:d===0?'Vence hoy':d===1?'Vence mañana':`Vence en ${d} días`;
     const perc=real&&real.perc||0;
