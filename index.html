@@ -338,7 +338,7 @@ function alertas(){
     let detalle;
     if(S.pagoUSD==='pesos'){detalle=`Pagá ${ars(real?tt.ars+tt.usd*S.tc:aPesos(tt.ars,tt.usd))} en pesos`}
     else{const pes=real?tt.ars-perc:tt.ars;detalle=`Pagá <b>${ars(pes)}</b> en pesos${tt.usd?` y <b>${usd(tt.usd)}</b> con dólares`:''}`+(perc?`<br>El resumen dice ${ars(tt.ars)}: le restás ${ars(perc)} de percepción del 30%, que te devuelven al pagar en dólares.`:'')}
-    out.push(`<div class="alert ${d<=2?'soon':''}" style="flex-wrap:wrap"><div style="flex:1;min-width:200px"><div class="t">${cuando} · ${esc(t.nombre)} · ${fmtD(v)}</div><div class="d num">${detalle}</div>${!real?`<button class="linkbtn" data-act="cargar-total" data-t="${t.id}" data-k="${k}">Cargar el total del resumen</button>`:''}</div><button class="btn small" data-act="pagado" data-key="${key}">Ya pagué</button></div>`);
+    out.push(`<div class="alert ${d<=2?'soon':''}" style="flex-wrap:wrap"><div style="flex:1;min-width:200px"><div class="t">${cuando} · ${esc(t.nombre)} · ${fmtD(v)}</div><div class="d num">${detalle}</div>${!real?`<button class="linkbtn" data-act="cargar-total" data-t="${t.id}" data-k="${k}">Cargar el total a mano</button> · <button class="linkbtn" data-act="subir-pdf">Subir el PDF</button>`:''}</div><button class="btn small" data-act="pagado" data-key="${key}">Ya pagué</button></div>`);
   });
   return out.join('');
 }
@@ -389,6 +389,7 @@ function vCompras(){
   const pend=S.compras.reduce((a,c)=>{const t=S.tarjetas.find(t=>t.id===c.tarjeta);if(!t)return a;const i=abiertoDe(t)-inicioDe(t,c);const rest=Math.max(0,Math.min(c.cuotas,c.cuotas-i));const m=c.monto/c.cuotas*rest;return a+(c.moneda==='USD'?m*S.tc:m)},0);
   return `${header('Compras con tarjeta')}${ejemploBanner()}
   <div class="card" style="flex-direction:row;justify-content:space-between;align-items:center"><div><div class="eyebrow">Deuda en cuotas, incluido este resumen</div><div style="font-family:var(--f-display);font-size:26px;font-weight:700" class="num">${ars(pend)}</div></div><button class="btn" data-act="nueva-compra">+ Compra</button></div>
+  <button class="btn ghost" data-act="subir-pdf">Subir PDF del resumen</button>
   ${catSection()}
   <section class="sec"><h2>Activas</h2><div class="list">${activas.length?activas.map(row).join(''):'<div class="empty">No hay compras activas.</div>'}</div></section>
   ${terminadas.length?`<section class="sec"><h2 class="muted">Terminadas</h2><div class="list">${terminadas.slice(0,30).map(row).join('')}</div></section>`:''}`;
@@ -583,6 +584,7 @@ function act(a,el){
   if(a==='nuevo-fijo')return sheetFijo();
   if(a==='nuevo-variable')return sheetFijo(null,'variable');
   if(a==='simular')return sheetSimular();
+  if(a==='subir-pdf')return elegirPdf();
   if(a==='salir'){window.cloudSignOut&&window.cloudSignOut();return}
   if(a==='exportar'){const t=JSON.stringify(S);(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Respaldo copiado')).catch(()=>toast('No se pudo copiar'));return}
   if(a==='cargar-total')return sheetTotal(el.dataset.t,Number(el.dataset.k));
@@ -683,6 +685,131 @@ function sheetFijo(f,tipo0){
     const del=root.querySelector('#f-del');if(del)del.onclick=()=>{if(del.dataset.c){S.fijos=S.fijos.filter(x=>x.id!==f.id);save();closeSheet();render();toast('Gasto eliminado')}else{del.dataset.c=1;del.textContent='Tocá para confirmar'}};
   });
 }
+/* ---------- lectura del PDF del resumen ---------- */
+async function pdfLineas(pdfjs, data){
+  const doc=await pdfjs.getDocument({data}).promise;const out=[];
+  for(let p=1;p<=doc.numPages;p++){
+    const page=await doc.getPage(p);const tc=await page.getTextContent();
+    const rows=[];
+    tc.items.forEach(it=>{if(!it.str||!it.str.trim())return;const x=it.transform[4],y=it.transform[5];
+      let r=rows.find(r=>Math.abs(r.y-y)<2.5);if(!r){r={y,items:[]};rows.push(r)}r.items.push({x,s:it.str,w:it.width||0})});
+    rows.sort((a,b)=>b.y-a.y).forEach(r=>{r.items.sort((a,b)=>a.x-b.x);let s='',end=null;
+      r.items.forEach(i=>{if(end!=null&&i.x-end>3)s+='  ';else if(end!=null&&i.x-end>0.5)s+=' ';s+=i.s;end=i.x+i.w});out.push(s.replace(/\s+$/,''))});
+  }
+  return out;
+}
+const MES_ES={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,set:9,oct:10,nov:11,dic:12};
+const numAR=s=>Number(String(s).replace(/\./g,'').replace(',','.'));
+function parseResumen(lines){
+  const txt=lines.join('\n');
+  const r={fechas:[],total:null,perc:0,consumos:[],marca:/master/i.test(txt)?'master':/visa/i.test(txt)?'visa':''};
+  const fre=/(\d{2})-([A-Za-zé]{3})-(\d{2})/g;let m;
+  while((m=fre.exec(txt))&&r.fechas.length<6){const mm=MES_ES[m[2].toLowerCase()];if(mm)r.fechas.push(`20${m[3]}-${String(mm).padStart(2,'0')}-${m[1]}`)}
+  for(const l of lines){
+    if(/TOTAL A PAGAR/i.test(l)&&!r.total){const n=l.match(/-?[\d.]+,\d{2}/g)||[];r.total={ars:n[0]?numAR(n[0]):0,usd:n[1]?numAR(n[1]):0}}
+    if(/DB\.?\s*RG\s*5617/i.test(l)){const n=l.match(/-?[\d.]+,\d{2}/g)||[];if(n.length)r.perc+=numAR(n[n.length-1])}
+    const c=l.match(/^\s*(\d{2})-(\d{2})-(\d{2})\s+(?:[*A-Z]\s+)?(.+?)\s+(?:(\d{2})\/(\d{2})\s+)?(\d{5,7})\s+(-?[\d.]+,\d{2})\s*$/);
+    if(c){
+      let desc=c[4].trim(),moneda='ARS';
+      const u=desc.match(/USD\s*([\d.]+,\d{2})?\s*$/);
+      if(u){moneda='USD';desc=desc.slice(0,u.index).trim()}
+      r.consumos.push({fecha:`20${c[3]}-${c[2]}-${c[1]}`,descRaw:desc,cuotaN:c[5]?+c[5]:1,cuotaM:c[6]?+c[6]:1,comp:c[7],monto:numAR(c[8]),moneda});
+    }
+  }
+  return r;
+}
+function limpiarDesc(raw){
+  let d=raw.replace(/\s+/g,' ').trim(),cat='',app='';
+  d=d.replace(/^(MERPAGO|PAYU\*AR|DLO|WL|MP)\s*\*\s*/i,'');
+  if(/PEDIDOSYA|PEDIDOS YA/i.test(d)){cat='delivery';app='pedidosya';d=/PROPINA/i.test(d)?'Propina PedidosYa':d.replace(/^PEDIDOSYA\s*\*\s*/i,'')}
+  else if(/RAPPI PRO/i.test(d)){cat='otros';d='Rappi Pro'}
+  else if(/RAPPI/i.test(d)){cat='delivery';app='rappi';d=d.replace(/^RAPPI\s*\*?\s*/i,'')||'Rappi'}
+  // saca códigos de referencia (mezcla de letras y números, o números largos)
+  d=d.split(' ').filter((w,i)=>i===0||!((/\d/.test(w)&&/[A-Za-z]/.test(w)&&w.length>=5)||/^\d{7,}$/.test(w))).join(' ').replace(/\*/g,' ').replace(/\s+/g,' ').trim();
+  d=d.toLowerCase().replace(/(^|[\s*.\-\/(])([a-záéíóúñ])/g,(x,a,b)=>a+b.toUpperCase()).trim();
+  return {desc:d||raw,cat,app};
+}
+
+/* ---------- importar resumen en PDF ---------- */
+let pdfjsP=null;
+function cargarPdfjs(){
+  if(pdfjsP)return pdfjsP;
+  pdfjsP=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    sc.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';res(window.pdfjsLib)};
+    sc.onerror=()=>{pdfjsP=null;rej(new Error('No se pudo cargar el lector de PDF. Revisá la conexión.'))};document.head.appendChild(sc)});
+  return pdfjsP;
+}
+function elegirPdf(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='application/pdf,.pdf';
+  inp.onchange=async()=>{const f=inp.files[0];if(!f)return;toast('Leyendo el resumen…');
+    try{const lib=await cargarPdfjs();const lines=await pdfLineas(lib,new Uint8Array(await f.arrayBuffer()));const r=parseResumen(lines);
+      if(r.fechas.length<4||!r.total)throw new Error('No reconocí este PDF como un resumen de tarjeta. Probá con el PDF que descargás del home banking.');
+      sheetImport(r)}catch(e){toast(e.message||'No se pudo leer el PDF')}};
+  inp.click();
+}
+const toks=s=>String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').split(/[^a-z0-9]+/).filter(w=>w.length>=4);
+function esFijo(t,desc,monto,moneda){
+  const dt=toks(desc).map(w=>w==='anthropic'?'claude':w);
+  return S.fijos.some(f=>f.medio===t.id&&f.moneda===moneda&&Math.abs(f.monto-monto)<=Math.max(1,f.monto*.15)&&toks(f.nombre).some(w=>dt.some(d=>d.startsWith(w)||w.startsWith(d))));
+}
+function planImport(r,t){
+  const ci=parseD(r.fechas[2]);const k=keyOf(ci.getFullYear(),ci.getMonth());
+  const nuevas=[],dup=[],fijas=[],fix=[];
+  r.consumos.forEach(c=>{
+    const l=limpiarDesc(c.descRaw);const cuotaMonto=c.monto;const inicio=k-(c.cuotaN-1);
+    if(c.cuotaM===1&&esFijo(t,l.desc,c.monto,c.moneda)){fijas.push(l.desc);return}
+    const ya=S.compras.find(x=>x.tarjeta===t.id&&((x.comp&&x.comp===c.comp&&x.fecha===c.fecha)||
+      (c.cuotaM>1&&x.cuotas>1&&Math.abs(x.monto/x.cuotas-cuotaMonto)<1.5&&inicioDe(t,x)===inicio)||
+      (c.cuotaM===1&&x.cuotas===1&&x.fecha===c.fecha&&x.monto>=c.monto-1&&x.monto<=c.monto+2500)));
+    if(ya){if(ya.cuotas!==c.cuotaM)fix.push({x:ya,cuotas:c.cuotaM,monto:Math.round(cuotaMonto*c.cuotaM*100)/100});else dup.push(l.desc);return}
+    nuevas.push({id:uid(),desc:l.desc,monto:Math.round(cuotaMonto*c.cuotaM*100)/100,moneda:c.moneda,cuotas:c.cuotaM,fecha:c.fecha,tarjeta:t.id,inicio,comp:c.comp,cat:l.cat||detectCat(l.desc)||'',app:l.app,origen:'pdf'});
+  });
+  return {k,nuevas,dup,fijas,fix};
+}
+function sheetImport(r){
+  if(!S.tarjetas.length){toast('Agregá una tarjeta en Ajustes');return}
+  const guess=(S.tarjetas.find(t=>r.marca&&new RegExp(r.marca,'i').test(t.nombre))||S.tarjetas[0]).id;
+  const F=i=>fmtD(parseD(r.fechas[i]));
+  openSheet('Importar resumen',`
+    <div class="field"><span class="flabel">¿De qué tarjeta es?</span>${segBtns('imptar',S.tarjetas.map(t=>[t.id,esc(t.nombre)]),guess)}</div>
+    <div id="imp-out"></div>`,root=>{
+    const out=root.querySelector('#imp-out');
+    const draw=()=>{
+      const t=S.tarjetas.find(t=>t.id===segVal(root,'imptar'));const pl=planImport(r,t);
+      const cuotas=pl.nuevas.filter(c=>c.cuotas>1),sueltas=pl.nuevas.filter(c=>c.cuotas===1);
+      const del=sueltas.filter(c=>c.cat==='delivery');
+      out.innerHTML=`<div class="card result">
+        <div class="kv"><span>Resumen que cerró</span><b>${F(2)} · vence ${F(3)}</b></div>
+        <div class="kv"><span>Total a pagar</span><b class="num">${ars(r.total.ars)}${r.total.usd?' + '+usd(r.total.usd):''}</b></div>
+        ${r.perc?`<div class="kv"><span>Percepción 30% (vuelve si pagás USD con USD)</span><b class="num">${ars(r.perc)}</b></div>`:''}
+        <div class="kv"><span>Próximo cierre</span><b>${r.fechas[4]?F(4)+' · vence '+F(5):'—'}</b></div>
+      </div>
+      <div class="card result">
+        <div class="kv"><span>Compras en cuotas nuevas</span><b class="num">${cuotas.length}</b></div>
+        <div class="kv"><span>Compras en 1 pago</span><b class="num">${sueltas.length}${del.length?` <span class="muted" style="font-weight:400">(${del.length} delivery)</span>`:''}</b></div>
+        ${pl.dup.length?`<div class="kv"><span>Ya estaban cargadas</span><b class="num">${pl.dup.length}</b></div>`:''}
+        ${pl.fix.length?`<div class="kv"><span>Corrijo la cantidad de cuotas</span><b>${pl.fix.map(f=>esc(f.x.desc)+' → '+f.cuotas).join(', ')}</b></div>`:''}
+        ${pl.fijas.length?`<div class="kv"><span>Suscripciones que ya tenés como fijo</span><b class="num">${pl.fijas.length}</b></div>`:''}
+      </div>
+      ${cuotas.length?`<div class="list">${cuotas.map(c=>`<div class="row"><span class="main"><span class="name">${esc(c.desc)}</span><span class="meta">${fmtD(parseD(c.fecha))} · ${c.cuotas} cuotas · arranca en la ${abiertoDe(t)-c.inicio+1>0?'cuota '+Math.min(c.cuotas,abiertoDe(t)-c.inicio+1)+' el próximo resumen':'próximo'}</span></span><span class="amt num">${money(c.monto/c.cuotas,c.moneda)}<div class="meta" style="font-weight:400">por cuota</div></span></div>`).join('')}</div>`:''}
+      <p class="hint" style="margin:0">El PDF se lee en tu dispositivo: no se sube a ningún lado. Solo se guardan las fechas, los totales y las compras.</p>
+      <button class="btn" id="imp-ok">Importar</button>`;
+      out.querySelector('#imp-ok').onclick=()=>{
+        const k=pl.k;t.fechas=t.fechas||{};t.cerrados=t.cerrados||{};
+        if(r.fechas[0])t.fechas[k-1]={cierre:r.fechas[0],vence:r.fechas[1]};
+        t.fechas[k]={cierre:r.fechas[2],vence:r.fechas[3]};
+        if(r.fechas[4])t.fechas[k+1]={cierre:r.fechas[4],vence:r.fechas[5]};
+        t.cerrados[k]={ars:r.total.ars,usd:r.total.usd,perc:r.perc||0};
+        const cd=parseD(r.fechas[2]).getDate();if(cd)t.cierre=cd;const vd=r.fechas[5]?parseD(r.fechas[5]).getDate():parseD(r.fechas[3]).getDate();if(vd)t.vence=vd;
+        pl.fix.forEach(f=>{f.x.cuotas=f.cuotas;f.x.monto=f.monto});
+        S.compras.push(...pl.nuevas);save();closeSheet();tab='inicio';render();
+        toast(`Resumen importado: ${pl.nuevas.length} compras nuevas`);
+      };
+    };
+    wireSeg(root,draw);draw();
+  });
+}
+
 function sheetSimular(){
   if(!S.tarjetas.length){toast('Agregá una tarjeta en Ajustes');return}
   openSheet('¿Y si compro…?',`
