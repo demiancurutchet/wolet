@@ -93,6 +93,7 @@ button{cursor:pointer}
 .gear svg{width:20px;height:20px}
 .top-r{display:flex;align-items:center;gap:10px}
 .rank{display:flex;flex-direction:column;gap:2px}
+.version{margin:4px 0 0;text-align:center;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .chk{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--line);background:var(--surface);color:var(--accent-ink);font-weight:700;font-size:15px;line-height:1;display:grid;place-items:center}
 .chk[aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#fff}
 .rowbtn{flex:1;min-width:0;display:flex;align-items:center;gap:12px;background:none;border:0;padding:0;text-align:left}
@@ -190,6 +191,7 @@ button{cursor:pointer}
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const LSKEY='proximo-resumen-v1';
+const APP_VERSION='1.1.2'; // 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible
 const COLORS=['#2B55C9','#C2541B','#1F8A6A','#8A4FB8'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
@@ -326,7 +328,8 @@ function vInicio(){
   ${fijosLine()}
   ${deliveryLine()}
   <section class="sec"><div class="sec-head"><h2>Qué entra en este resumen</h2><span class="muted num" style="font-size:13px">${r.porT.reduce((a,p)=>a+p.items.length,0)} cargos</span></div>${itemsList(r.porT)}</section>
-  ${S.ingreso?balance(r):`<div class="card"><div class="hint">Cargá tu sueldo en Ajustes para ver cuánto te queda para ahorrar y tu tope de tarjeta.</div><button class="btn ghost" data-go="ajustes">Ir a Ajustes</button></div>`}`;
+  ${S.ingreso?balance(r):`<div class="card"><div class="hint">Cargá tu sueldo en Ajustes para ver cuánto te queda para ahorrar y tu tope de tarjeta.</div><button class="btn ghost" data-go="ajustes">Ir a Ajustes</button></div>`}
+  <p class="version">Wolet v${APP_VERSION}</p>`;
 }
 function alertas(){
   const out=[];
