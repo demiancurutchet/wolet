@@ -321,6 +321,7 @@ function vInicio(){
     ${meter}
   </section>
   ${!hayCompras?`<div class="card"><div><h2>Empezá por acá</h2><p class="muted" style="margin:6px 0 0">Cargá tus gastos fijos y lo que vas pagando con la tarjeta. Cada compra en cuotas se reparte sola en los próximos resúmenes.</p></div><div class="btn-row"><button class="btn" data-act="nueva-compra">Cargar una compra</button><button class="btn ghost" data-act="ejemplo">Ver con datos de ejemplo</button></div></div>`:''}
+  <button class="btn ghost" data-act="subir-pdf">Subir PDF del resumen</button>
   <section class="sec"><div class="sec-head"><h2>Próximos meses</h2><button class="btn small ghost" data-act="simular">¿Y si compro…?</button></div>${chart()}</section>
   ${fijosLine()}
   ${deliveryLine()}
