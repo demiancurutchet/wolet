@@ -79,6 +79,7 @@ button{cursor:pointer}
 .meter-bar{height:8px;border-radius:99px;background:color-mix(in srgb,var(--slab-ink) 16%,transparent);overflow:hidden}
 .meter-fill{height:100%;border-radius:99px;background:var(--slab-ink)}
 .meter-fill.over{background:var(--bad)}
+.meter-fill.warn{background:var(--warn)}
 .meter-row{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--slab-muted)}
 
 /* alerts */
@@ -232,7 +233,7 @@ details.more .tbl-wrap{margin-top:10px}
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const LSKEY='proximo-resumen-v1';
-const APP_VERSION='1.2.4'; // 1.2.4 próximos meses incluye el resumen cerrado sin vencer · 1.2.3 aviso de vencimiento desde 2 días antes · 1.2.2 fecha de pago automática, nota al crear, tope explicado · 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
+const APP_VERSION='1.3.0'; // 1.3.0 ahorro posible del mes en dólares · 1.2.4 próximos meses incluye el resumen cerrado sin vencer · 1.2.3 aviso de vencimiento desde 2 días antes · 1.2.2 fecha de pago automática, nota al crear, tope explicado · 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
 const COLORS=['#2B55C9','#C2541B','#1F8A6A','#8A4FB8'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
@@ -348,15 +349,16 @@ function vInicio(){
   const k0=t0?abiertoDe(t0):0;
   const cierre=t0?cierreDe(t0,k0):today();
   const vence=t0?venceDe(t0,k0):today();
-  const tp=tope();
   let meter='';
-  if(tp!=null){
-    const pct=tp>0?Math.min(100,r.est/tp*100):100;const over=r.est>tp;
-    const g=fijosFuera(),mp=metaPesos();
-    const cuenta=`Sueldo ${ars(S.ingreso)} − gastos del mes ${ars(g)} − ahorro ${metaTxt()}${S.metaTipo==='USD'?' ('+ars(mp)+')':''}`;
-    meter=tp<=0?`<div class="meter"><div class="meter-row"><span><b style="color:var(--slab-ink)">No te queda lugar para la tarjeta</b></span><span class="num">faltan ${ars(-tp)}</span></div>
-      <div class="meter-bar"><div class="meter-fill over" style="width:100%"></div></div><div class="meter-row"><span>${cuenta} = ${ars(tp)}</span></div></div>`
-    :`<div class="meter"><div class="meter-row"><span>Podés gastar en tarjeta hasta ${ars(tp)} y seguir ahorrando ${metaTxt()}</span><span class="num">${over?'Te pasaste '+ars(r.est-tp):'Te quedan '+ars(tp-r.est)}</span></div><div class="meter-bar"><div class="meter-fill ${over?'over':''}" style="width:${pct}%"></div></div><div class="meter-row"><span>${cuenta}</span></div></div>`;
+  if(S.ingreso){
+    const a=ahorroMes();const mp=metaPesos();const U=S.metaTipo==='USD';
+    const metaUsd=U?(S.metaMonto||0):mp/S.tc;
+    const pct=metaUsd>0?Math.min(100,a.usdPosible/metaUsd*100):100;const llega=a.libre>=mp&&mp>0;
+    const titulo=a.libre<=0?`Este mes no te sobra para comprar dólares`:llega?`Podés comprar ${usd(a.usdPosible).replace(/,00$/,'')} este mes`:`Podés comprar hasta ${usd(a.usdPosible).replace(/,00$/,'')} este mes`;
+    const detalle=a.libre<=0?`Lo que tenés que pagar supera el sueldo por ${ars(-a.libre)}.`:mp<=0?'':llega?`Llegás a tu meta de ${metaTxt()} y te sobran ${ars(a.libre-mp)}.`:`Tu meta es ${metaTxt()}: este mes te faltan ${U?usd(Math.max(0,metaUsd-a.usdPosible)).replace(/,00$/,''):ars(mp-Math.max(0,a.libre))}.`;
+    meter=`<div class="meter"><div class="meter-row"><span><b style="color:var(--slab-ink)">${titulo}</b></span><span class="num">${mp>0?Math.round(pct)+'% de tu meta':''}</span></div>
+      <div class="meter-bar"><div class="meter-fill ${llega?'':'warn'}" style="width:${pct}%"></div></div>
+      <div class="meter-row"><span>${detalle} Sueldo ${ars(S.ingreso)} − gastos del mes ${ars(a.gastos)} − tarjetas ${ars(a.tarjPes)}${a.tarjUsd?' y '+usd(a.tarjUsd):''}${a.estim?' (estimado)':''}.</span></div></div>`;
   }
   const hayCompras=S.compras.length||S.fijos.length;
   return `${header('Próximo resumen')}
@@ -377,7 +379,7 @@ function vInicio(){
   ${fijosLine()}
   ${deliveryLine()}
   <section class="sec"><div class="sec-head"><h2>Qué entra en este resumen</h2><span class="muted num" style="font-size:13px">${r.porT.reduce((a,p)=>a+p.items.length,0)} cargos</span></div>${itemsList(r.porT)}</section>
-  ${S.ingreso?balance(r):`<div class="card"><div class="hint">Cargá tu sueldo en Ajustes para ver cuánto te queda para ahorrar y tu tope de tarjeta.</div><button class="btn ghost" data-go="ajustes">Ir a Ajustes</button></div>`}
+  ${S.ingreso?balance():`<div class="card"><div class="hint">Cargá tu sueldo en Ajustes para ver cuánto te queda para ahorrar y tu tope de tarjeta.</div><button class="btn ghost" data-go="ajustes">Ir a Ajustes</button></div>`}
   <p class="version">Wolet v${APP_VERSION}</p>`;
 }
 function alertas(){
@@ -405,23 +407,23 @@ function itemsList(porT){
     ${i.moneda==='USD'?'<span class="chip usd">USD</span>':''}${i.ref.ejemplo?'<span class="chip ex">Ej.</span>':''}
     <span class="amt num">${money(i.monto,i.moneda)}${i.monto<0?'<div class="meta" style="font-weight:400;color:var(--ok)">devolución</div>':''}</span></button>`).join('')}</div>`;
 }
-function balance(r){
-  const ff=fijosFuera();const queda=S.ingreso-ff-r.est;const meta=metaPesos();
-  const st=queda>=meta?'good':queda>=0?'tight':'over';
-  const U=S.metaTipo==='USD',f=x=>U?usd(x/S.tc).replace(/,\d\d$/,''):ars(x);
-  const msg=st==='good'?`Cumplís la meta de ${metaTxt()} y te sobran ${f(queda-meta)}`:st==='tight'?`Te alcanza para ${f(queda)}, te faltan ${f(meta-queda)} para la meta de ${metaTxt()}`:`Te faltan ${ars(-queda)} para cubrir el mes`;
-  return `<section class="sec"><h2>El mes que pagás este resumen</h2><div class="card result">
+function balance(){
+  const a=ahorroMes();const mp=metaPesos();
+  const st=a.libre<=0?'over':a.libre>=mp?'good':'tight';
+  const msg=a.libre<=0?`Este mes lo que pagás supera el sueldo por ${ars(-a.libre)}. Mejor no comprar dólares.`:st==='good'?`Comprá ${usd(a.usdPosible).replace(/,00$/,'')}: llegás a tu meta de ${metaTxt()}.`:`Recomendado: comprá ${usd(a.usdPosible).replace(/,00$/,'')}. No llegás a tu meta de ${metaTxt()}, pero no dejás nada sin pagar.`;
+  return `<section class="sec"><h2>Ahorro de ${MESES_L[today().getMonth()]}</h2><div class="card result">
     <div class="kv"><span>Sueldo</span><b class="num">${ars(S.ingreso)}</b></div>
-    <div class="kv"><span>Fijos y presupuesto fuera de la tarjeta</span><b class="num">− ${ars(ff)}</b></div>
-    <div class="kv"><span>Este resumen</span><b class="num">− ${ars(r.est)}</b></div>
-    <div class="kv" style="border-top:1px solid var(--line);padding-top:8px"><span>Te queda</span><b class="num">${ars(queda)}</b></div>
-    <div class="verdict ${st}">${msg}</div></div></section>`;
+    <div class="kv"><span>Gastos del mes</span><b class="num">− ${ars(a.gastos)}</b></div>
+    ${a.cards.map(c=>`<div class="kv"><span>${esc(c.t.nombre)} <span class="muted">(vence ${fmtD(c.vence)}${c.real?'':', estimado'})</span></span><b class="num">− ${ars(c.ars)}${c.usd?' y '+usd(c.usd):''}</b></div>`).join('')}
+    <div class="kv" style="border-top:1px solid var(--line);padding-top:8px"><span>Te queda para ahorrar</span><b class="num">${ars(Math.max(0,a.libre))} ≈ ${usd(a.usdPosible).replace(/,00$/,'')}</b></div>
+    <div class="verdict ${st}">${msg}</div>
+    ${a.estim?'<div class="hint">Las tarjetas sin PDF se estiman con las cuotas y suscripciones que ya conocemos, más lo que gastaste en compras de 1 pago en los últimos resúmenes que subiste.</div>':''}</div></section>`;
 }
 function chart(extra){
   // arranca por el resumen ya cerrado que todavía no venció (ej: cerró el 19/11, vence el 1/12)
   const start=S.tarjetas.some(t=>venceDe(t,abiertoDe(t)-1)>=today())?-1:0;
   const data=[];for(let i=start;i<start+6;i++){const base=resumenTotal(i).est;const con=extra?resumenTotal(i,extra).est:base;data.push({base,con,i,k:S.tarjetas[0]?abiertoDe(S.tarjetas[0])+i:0})}
-  const tp=tope();
+  const tp=null; // el gráfico muestra solo lo que pagás de tarjeta cada mes
   const max=Math.max(1,...data.map(d=>d.con),tp||0)*1.08;
   const lab=d=>{if(!S.tarjetas[0])return'';const v=venceDe(S.tarjetas[0],d.k);return MESES[v.getMonth()]};
   return `<div class="chart"><div class="bars">
@@ -471,6 +473,17 @@ function montoMes(f,key){
 }
 const arsMes=(f,key)=>f.moneda==='USD'?montoMes(f,key)*S.tc:montoMes(f,key);
 function setReg(key,id,patch){S.mes=S.mes||{};const m=S.mes[key]=S.mes[key]||{};m[id]=Object.assign({},m[id],patch)}
+/* estimado de un resumen sin PDF: cuotas y suscripciones que ya sabemos
+   + lo que gastás en compras de 1 pago, en promedio de los últimos resúmenes subidos */
+function sueltosDe(t,k){let ars=0,usd=0;S.compras.forEach(c=>{if(c.tarjeta===t.id&&c.cuotas===1&&inicioDe(t,c)===k){if(c.moneda==='USD')usd+=c.monto;else ars+=c.monto}});return{ars,usd}}
+function estimadoTarjeta(t,k){
+  const base=totales(cargos(t,k));
+  const prev=Object.keys(t.cerrados||{}).map(Number).filter(x=>x<k).sort((a,b)=>b-a).slice(0,3);
+  if(!prev.length)return{ars:base.ars,usd:base.usd,prom:false};
+  let pa=0,pu=0;prev.forEach(x=>{const v=sueltosDe(t,x);pa+=v.ars;pu+=v.usd});pa/=prev.length;pu/=prev.length;
+  const ya=sueltosDe(t,k);
+  return{ars:base.ars+Math.max(0,pa-ya.ars),usd:base.usd+Math.max(0,pu-ya.usd),prom:true};
+}
 /* el resumen de cada tarjeta que se paga en ese mes */
 function pagoTarjetaMes(t,key){
   const [y,m]=key.split('-').map(Number);
@@ -478,7 +491,7 @@ function pagoTarjetaMes(t,key){
     const v=venceDe(t,k);if(v.getFullYear()!==y||v.getMonth()!==m-1)continue;
     const real=t.cerrados&&t.cerrados[k];let a,u;
     if(real){if(S.pagoUSD==='pesos'){a=real.ars+real.usd*S.tc;u=0}else{a=real.ars-(real.perc||0);u=real.usd||0}}
-    else{const tt=totales(cargos(t,k));if(S.pagoUSD==='pesos'){a=tt.ars+tt.usd*S.tc*1.3;u=0}else{a=tt.ars;u=tt.usd}}
+    else{const tt=estimadoTarjeta(t,k);if(S.pagoUSD==='pesos'){a=tt.ars+tt.usd*S.tc*1.3;u=0}else{a=tt.ars;u=tt.usd}}
     const kk=t.id+'_'+k;
     return {t,k,vence:v,ars:a,usd:u,real:!!real,pag:!!S.pagados[kk],fecha:(S.pagFecha||{})[kk]||'',kk};
   }
@@ -492,6 +505,16 @@ function resumenMes(key){
   const pagado=items.filter(i=>i.pag).reduce((a,i)=>a+i.ars,0)+cards.filter(c=>c.pag).reduce((a,c)=>a+cAr(c),0);
   const n=items.length+cards.length,np=items.filter(i=>i.pag).length+cards.filter(c=>c.pag).length;
   return {items,cards,total,pagado,falta:total-pagado,n,np};
+}
+/* ¿cuánto puedo ahorrar este mes? sueldo − gastos del mes − tarjetas que vencen este mes */
+function ahorroMes(key){
+  key=key||mkNow();const r=resumenMes(key);
+  const gastos=r.items.reduce((a,i)=>a+i.ars,0);
+  const tarjPes=r.cards.reduce((a,c)=>a+c.ars,0),tarjUsd=r.cards.reduce((a,c)=>a+c.usd,0);
+  const estim=r.cards.some(c=>!c.real);
+  const libre=S.ingreso-gastos-tarjPes-tarjUsd*S.tc;
+  const usdPosible=Math.max(0,Math.floor(libre/S.tc/10)*10);
+  return{key,gastos,tarjPes,tarjUsd,estim,libre,usdPosible,cards:r.cards};
 }
 function fijosFuera(){const key=mkNow();return conceptos(key).reduce((a,f)=>a+arsMes(f,key),0)}
 function fijosLine(){
