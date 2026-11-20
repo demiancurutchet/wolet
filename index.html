@@ -93,6 +93,26 @@ button{cursor:pointer}
 .gear svg{width:20px;height:20px}
 .top-r{display:flex;align-items:center;gap:10px}
 .rank{display:flex;flex-direction:column;gap:2px}
+html.modal-open,html.modal-open body{overflow:hidden}
+.sheet{overscroll-behavior:contain}
+.stack{display:flex;flex-direction:column;gap:14px}
+.kv-group{display:flex;flex-direction:column;gap:8px}
+.kv-sep{border:0;border-top:1px solid var(--line);margin:4px 0}
+.tbl-wrap{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface)}
+.tbl-scroll{overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;color:var(--muted);text-align:left;padding:10px 12px;background:var(--sunk);white-space:nowrap}
+.tbl td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+.tbl .r{text-align:right;white-space:nowrap}
+.tbl .nw{white-space:nowrap;color:var(--muted)}
+.tbl td.name{font-weight:500;width:100%}
+.tbl .sub{font-size:12.5px;font-weight:400;color:var(--muted);margin-top:2px}
+@media (max-width:480px){.tbl th,.tbl td{padding:9px 10px}.tbl th{font-size:10.5px;letter-spacing:.04em}}
+.sec-t{font-family:var(--f-display);font-size:16px;font-weight:600;margin:0}
+details.more summary{cursor:pointer;font-weight:600;padding:4px 0;list-style:none}
+details.more summary::before{content:'▸ ';color:var(--muted)}
+details.more[open] summary::before{content:'▾ '}
+details.more .tbl-wrap{margin-top:10px}
 .version{margin:4px 0 0;text-align:center;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .chk{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--line);background:var(--surface);color:var(--accent-ink);font-weight:700;font-size:15px;line-height:1;display:grid;place-items:center}
 .chk[aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#fff}
@@ -200,7 +220,7 @@ button{cursor:pointer}
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const LSKEY='proximo-resumen-v1';
-const APP_VERSION='1.1.4'; // 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
+const APP_VERSION='1.1.6'; // 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
 const COLORS=['#2B55C9','#C2541B','#1F8A6A','#8A4FB8'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
@@ -628,9 +648,10 @@ const layer=document.getElementById('layer');
 function openSheet(title,body,onMount){
   layer.innerHTML=`<div class="scrim" data-close></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-inner"><div class="grab"></div><div class="sheet-head"><h2>${esc(title)}</h2><button class="x" data-close aria-label="Cerrar">×</button></div>${body}</div></div>`;
   layer.querySelectorAll('[data-close]').forEach(e=>e.onclick=closeSheet);
+  document.documentElement.classList.add('modal-open');
   onMount&&onMount(layer.querySelector('.sheet'));
 }
-function closeSheet(){layer.innerHTML=''}
+function closeSheet(){layer.innerHTML='';document.documentElement.classList.remove('modal-open')}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
 const segBtns=(name,opts,val)=>`<div class="seg" data-seg="${name}">${opts.map(([v,l])=>`<button type="button" data-v="${v}" aria-pressed="${String(v)===String(val)}">${l}</button>`).join('')}</div>`;
 function segVal(root,name){return root.querySelector(`[data-seg="${name}"] [aria-pressed="true"]`)?.dataset.v}
@@ -716,7 +737,7 @@ const MES_ES={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,set:9,oct:10
 const numAR=s=>Number(String(s).replace(/\./g,'').replace(',','.'));
 function parseResumen(lines){
   const txt=lines.join('\n');
-  const r={fechas:[],total:null,perc:0,consumos:[],marca:/master/i.test(txt)?'master':/visa/i.test(txt)?'visa':''};
+  const r={fechas:[],total:null,perc:0,consumos:[],marca:/master/i.test(txt)?'master':/visa/i.test(txt)?'visa':'',ult4:[...new Set([...txt.matchAll(/TARJETA\s+(\d{4})\b/gi)].map(x=>x[1]))]};
   const fre=/(\d{2})-([A-Za-zé]{3})-(\d{2})/g;let m;
   while((m=fre.exec(txt))&&r.fechas.length<6){const mm=MES_ES[m[2].toLowerCase()];if(mm)r.fechas.push(`20${m[3]}-${String(mm).padStart(2,'0')}-${m[1]}`)}
   for(const l of lines){
@@ -782,32 +803,47 @@ function planImport(r,t){
 }
 function sheetImport(r){
   if(!S.tarjetas.length){toast('Agregá una tarjeta en Ajustes');return}
-  const guess=(S.tarjetas.find(t=>r.marca&&new RegExp(r.marca,'i').test(t.nombre))||S.tarjetas[0]).id;
+  const porNum=S.tarjetas.find(t=>r.ult4.some(n=>t.nombre.includes(n)));
+  const porMarca=S.tarjetas.find(t=>r.marca&&new RegExp(r.marca,'i').test(t.nombre));
+  const guess=(porNum||porMarca||S.tarjetas[0]).id;
+  const como=porNum?`La detecté por el número de tarjeta (${r.ult4.join(', ')}).`:porMarca?`La detecté por la marca (${r.marca==='visa'?'Visa':'Mastercard'}). Si sumás los últimos 4 números al nombre de la tarjeta en Ajustes, la detecta con más precisión.`:'No pude detectarla: elegila vos.';
   const F=i=>fmtD(parseD(r.fechas[i]));
+  const tEl=document.getElementById('toast');if(tEl)tEl.hidden=true;
   openSheet('Importar resumen',`
-    <div class="field"><span class="flabel">¿De qué tarjeta es?</span>${segBtns('imptar',S.tarjetas.map(t=>[t.id,esc(t.nombre)]),guess)}</div>
+    <div class="field"><span class="flabel">¿De qué tarjeta es?</span>${segBtns('imptar',S.tarjetas.map(t=>[t.id,esc(t.nombre)]),guess)}<span class="hint">${como}</span></div>
     <div id="imp-out"></div>`,root=>{
     const out=root.querySelector('#imp-out');
     const draw=()=>{
       const t=S.tarjetas.find(t=>t.id===segVal(root,'imptar'));const pl=planImport(r,t);
       const cuotas=pl.nuevas.filter(c=>c.cuotas>1),sueltas=pl.nuevas.filter(c=>c.cuotas===1);
       const del=sueltas.filter(c=>c.cat==='delivery');
-      out.innerHTML=`<div class="card result">
+      const nRes=c=>pl.k-c.inicio+1; // cuota que figura en este resumen
+      const mesRes=MESES[parseD(r.fechas[2]).getMonth()];
+      out.innerHTML=`<div class="stack">
+      <div class="card"><div class="kv-group">
         <div class="kv"><span>Resumen que cerró</span><b>${F(2)} · vence ${F(3)}</b></div>
         <div class="kv"><span>Total a pagar</span><b class="num">${ars(r.total.ars)}${r.total.usd?' + '+usd(r.total.usd):''}</b></div>
-        ${r.perc?`<div class="kv"><span>Percepción 30% (vuelve si pagás USD con USD)</span><b class="num">${ars(r.perc)}</b></div>`:''}
+        ${r.perc?`<div class="kv"><span>Percepción 30% <span class="muted">(vuelve si pagás USD con USD)</span></span><b class="num">${ars(r.perc)}</b></div>`:''}
         <div class="kv"><span>Próximo cierre</span><b>${r.fechas[4]?F(4)+' · vence '+F(5):'—'}</b></div>
-      </div>
-      <div class="card result">
+        <hr class="kv-sep">
         <div class="kv"><span>Compras en cuotas nuevas</span><b class="num">${cuotas.length}</b></div>
         <div class="kv"><span>Compras en 1 pago</span><b class="num">${sueltas.length}${del.length?` <span class="muted" style="font-weight:400">(${del.length} delivery)</span>`:''}</b></div>
         ${pl.dup.length?`<div class="kv"><span>Ya estaban cargadas</span><b class="num">${pl.dup.length}</b></div>`:''}
-        ${pl.fix.length?`<div class="kv"><span>Corrijo la cantidad de cuotas</span><b>${pl.fix.map(f=>esc(f.x.desc)+' → '+f.cuotas).join(', ')}</b></div>`:''}
         ${pl.fijas.length?`<div class="kv"><span>Suscripciones que ya tenés como fijo</span><b class="num">${pl.fijas.length}</b></div>`:''}
-      </div>
-      ${cuotas.length?`<div class="list">${cuotas.map(c=>`<div class="row"><span class="main"><span class="name">${esc(c.desc)}</span><span class="meta">${fmtD(parseD(c.fecha))} · ${c.cuotas} cuotas · arranca en la ${abiertoDe(t)-c.inicio+1>0?'cuota '+Math.min(c.cuotas,abiertoDe(t)-c.inicio+1)+' el próximo resumen':'próximo'}</span></span><span class="amt num">${money(c.monto/c.cuotas,c.moneda)}<div class="meta" style="font-weight:400">por cuota</div></span></div>`).join('')}</div>`:''}
+        ${pl.fix.length?`<div class="kv"><span>Corrijo la cantidad de cuotas</span><b>${pl.fix.map(f=>esc(f.x.desc)+' → '+f.cuotas).join(', ')}</b></div>`:''}
+      </div></div>
+      ${cuotas.length?`<section class="stack" style="gap:8px"><h3 class="sec-t">Compras en cuotas <span class="muted" style="font-weight:400;font-size:14px">· cuota del resumen de ${mesRes}</span></h3>
+        <div class="tbl-wrap"><div class="tbl-scroll"><table class="tbl">
+          <thead><tr><th>Compra</th><th class="r">Cuota</th><th class="r">Quedan</th><th class="r">Por cuota</th></tr></thead>
+          <tbody>${cuotas.map(c=>{const n=nRes(c),q=c.cuotas-n;return `<tr><td class="name">${esc(c.desc)}<div class="sub">${fmtD(parseD(c.fecha))}</div></td><td class="r num">${n}/${c.cuotas}</td><td class="r num">${q?q:'—'}</td><td class="r num">${money(c.monto/c.cuotas,c.moneda)}</td></tr>`}).join('')}</tbody>
+        </table></div></div></section>`:''}
+      ${sueltas.length?`<details class="more"><summary>Compras en 1 pago (${sueltas.length})</summary>
+        <div class="tbl-wrap"><div class="tbl-scroll"><table class="tbl">
+          <thead><tr><th>Compra</th><th class="r">Monto</th></tr></thead>
+          <tbody>${sueltas.map(c=>`<tr><td class="name">${esc(c.desc)}${c.cat==='delivery'?' <span class="chip">Delivery</span>':''}<div class="sub">${fmtD(parseD(c.fecha))}</div></td><td class="r num">${money(c.monto,c.moneda)}</td></tr>`).join('')}</tbody>
+        </table></div></div></details>`:''}
       <p class="hint" style="margin:0">El PDF se lee en tu dispositivo: no se sube a ningún lado. Solo se guardan las fechas, los totales y las compras.</p>
-      <button class="btn" id="imp-ok">Importar</button>`;
+      <button class="btn" id="imp-ok">Importar</button></div>`;
       out.querySelector('#imp-ok').onclick=()=>{
         const k=pl.k;t.fechas=t.fechas||{};t.cerrados=t.cerrados||{};
         if(r.fechas[0])t.fechas[k-1]={cierre:r.fechas[0],vence:r.fechas[1]};
