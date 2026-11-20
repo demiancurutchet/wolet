@@ -232,7 +232,7 @@ details.more .tbl-wrap{margin-top:10px}
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const LSKEY='proximo-resumen-v1';
-const APP_VERSION='1.2.0'; // 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
+const APP_VERSION='1.2.1'; // 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
 const COLORS=['#2B55C9','#C2541B','#1F8A6A','#8A4FB8'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
@@ -319,8 +319,8 @@ function tope(){if(!S.ingreso)return null;return S.ingreso-fijosFuera()-metaPeso
 /* ---------- formato ---------- */
 const nf=new Intl.NumberFormat('es-AR',{maximumFractionDigits:0});
 const nf2=new Intl.NumberFormat('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});
-const ars=n=>'$ '+nf.format(Math.round(n));
-const usd=n=>'US$ '+nf2.format(n);
+const ars=n=>(Math.round(n)<0?'−':'')+'$ '+nf.format(Math.abs(Math.round(n)));
+const usd=n=>(n<0?'−':'')+'US$ '+nf2.format(Math.abs(n));
 const money=(n,m)=>m==='USD'?usd(n):ars(n);
 function short(n){if(Math.abs(n)>=1e6)return '$'+(n/1e6).toFixed(n>=1e7?0:1).replace('.',',')+'M';if(Math.abs(n)>=1e3)return '$'+Math.round(n/1e3)+'k';return '$'+Math.round(n)}
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -397,7 +397,7 @@ function itemsList(porT){
     <span class="dot" style="background:${i.t.color}"></span>
     <span class="main"><span class="name">${esc(i.desc)}</span><span class="meta">${esc(i.t.nombre)}${i.tipo==='fijo'?' · fijo mensual':''}${i.cuota?' · cuota '+i.cuota:''}${i.ultima?' · última':''}</span></span>
     ${i.moneda==='USD'?'<span class="chip usd">USD</span>':''}${i.ref.ejemplo?'<span class="chip ex">Ej.</span>':''}
-    <span class="amt num">${money(i.monto,i.moneda)}</span></button>`).join('')}</div>`;
+    <span class="amt num">${money(i.monto,i.moneda)}${i.monto<0?'<div class="meta" style="font-weight:400;color:var(--ok)">devolución</div>':''}</span></button>`).join('')}</div>`;
 }
 function balance(r){
   const ff=fijosFuera();const queda=S.ingreso-ff-r.est;const meta=metaPesos();
@@ -432,7 +432,7 @@ function vCompras(){
   const activas=[],terminadas=[];
   sorted.forEach(c=>{const t=S.tarjetas.find(t=>t.id===c.tarjeta);if(!t)return activas.push(c);const fin=inicioDe(t,c)+c.cuotas-1;(fin>=abiertoDe(t)?activas:terminadas).push(c)});
   const row=c=>{const t=S.tarjetas.find(t=>t.id===c.tarjeta);let info='';if(t){const i=abiertoDe(t)-inicioDe(t,c);if(c.cuotas>1){info=i<0?'empieza el próximo':i>=c.cuotas?'terminada':`cuota ${i+1}/${c.cuotas} · quedan ${c.cuotas-i-1}`}else info=i<=0?'en este resumen':'pagada'}
-    return `<button class="row" data-edit="compra" data-id="${c.id}"><span class="dot" style="background:${tColor(c.tarjeta)}"></span><span class="main"><span class="name">${esc(c.desc||'Compra')}</span><span class="meta">${fmtD(parseD(c.fecha))} · ${esc(tName(c.tarjeta))} · ${info}</span></span>${c.moneda==='USD'?'<span class="chip usd">USD</span>':''}${c.ejemplo?'<span class="chip ex">Ej.</span>':''}<span class="amt num">${money(c.monto,c.moneda)}${c.cuotas>1?`<div class="meta" style="font-weight:400">${c.cuotas} × ${money(c.monto/c.cuotas,c.moneda)}</div>`:''}</span></button>`};
+    return `<button class="row" data-edit="compra" data-id="${c.id}"><span class="dot" style="background:${tColor(c.tarjeta)}"></span><span class="main"><span class="name">${esc(c.desc||'Compra')}</span><span class="meta">${fmtD(parseD(c.fecha))} · ${esc(tName(c.tarjeta))} · ${info}</span></span>${c.moneda==='USD'?'<span class="chip usd">USD</span>':''}${c.ejemplo?'<span class="chip ex">Ej.</span>':''}${c.monto<0?'<span class="chip ok">Devolución</span>':''}<span class="amt num">${money(c.monto,c.moneda)}${c.cuotas>1?`<div class="meta" style="font-weight:400">${c.cuotas} × ${money(c.monto/c.cuotas,c.moneda)}</div>`:''}</span></button>`};
   const pend=S.compras.reduce((a,c)=>{const t=S.tarjetas.find(t=>t.id===c.tarjeta);if(!t)return a;const i=abiertoDe(t)-inicioDe(t,c);const rest=Math.max(0,Math.min(c.cuotas,c.cuotas-i));const m=c.monto/c.cuotas*rest;return a+(c.moneda==='USD'?m*S.tc:m)},0);
   return `${header('Compras con tarjeta')}${ejemploBanner()}
   <div class="card" style="flex-direction:row;justify-content:space-between;align-items:center"><div><div class="eyebrow">Deuda en cuotas, incluido este resumen</div><div style="font-family:var(--f-display);font-size:26px;font-weight:700" class="num">${ars(pend)}</div></div><button class="btn" data-act="nueva-compra">+ Compra</button></div>
@@ -678,7 +678,8 @@ function vHormiga(){
   const cols=[];for(let o=-3;o<=0;o++){const l=deliveryPor(o);cols.push({o,l,tot:l.reduce((a,c)=>a+montoAr(c),0),lab:t0?MESES[cierreDe(t0,abiertoDe(t0)+o).getMonth()]:''})}
   const cur=cols[3],prev=cols[2];
   const max=Math.max(1,...cols.map(c=>c.tot),S.topeDelivery||0)*1.1;
-  const prom=cur.l.length?cur.tot/cur.l.length:0;
+  const nPed=l=>l.filter(c=>c.monto>0).length;
+  const prom=nPed(cur.l)?cur.tot/nPed(cur.l):0;
   const diff=prev.tot?Math.round((cur.tot-prev.tot)/prev.tot*100):null;
   // ranking últimos 4 resúmenes
   const all=cols.flatMap(c=>c.l);const byC={},byA={};
@@ -691,7 +692,7 @@ function vHormiga(){
   return `${header('Delivery')}
   <section class="slab"><div class="eyebrow">Delivery · resumen que cierra el ${t0?fmtD(cierreDe(t0,abiertoDe(t0))):''}</div>
     <div><div class="big num">${ars(cur.tot)}</div>
-    <div class="usdline num" style="margin-top:8px"><span>${cur.l.length} pedido${cur.l.length===1?'':'s'}</span>${prom?`<span>ticket promedio ${ars(prom)}</span>`:''}${diff!=null?`<span>${diff>0?'+':''}${diff}% vs. el anterior</span>`:''}</div></div>
+    <div class="usdline num" style="margin-top:8px"><span>${nPed(cur.l)} pedido${nPed(cur.l)===1?'':'s'}</span>${prom?`<span>ticket promedio ${ars(prom)}</span>`:''}${diff!=null?`<span>${diff>0?'+':''}${diff}% vs. el anterior</span>`:''}</div></div>
     ${meter}
     <button class="btn" style="background:var(--slab-ink);color:var(--slab)" data-act="nuevo-pedido">+ Cargar pedido</button>
   </section>
@@ -806,7 +807,8 @@ function sheetCompra(c,preset){
   if(!S.tarjetas.length){toast('Agregá una tarjeta en Ajustes');return}
   const cuotasOpts=CUOTAS.includes(c.cuotas)?CUOTAS:[...CUOTAS,c.cuotas].sort((a,b)=>a-b);
   openSheet(nuevo?'Nueva compra':'Editar compra',`
-    <div class="field"><label for="c-monto">Monto</label><input class="inp big-in num" id="c-monto" inputmode="decimal" placeholder="0" value="${c.monto||''}"></div>
+    <div class="field"><span class="flabel">Tipo</span>${segBtns('signo',[['1','Compra'],['-1','Devolución']],c.monto<0?'-1':'1')}</div>
+    <div class="field"><label for="c-monto">Monto</label><input class="inp big-in num" id="c-monto" inputmode="decimal" placeholder="0" value="${c.monto?Math.abs(c.monto):''}"></div>
     <div class="grid2"><div class="field"><span class="flabel">Moneda</span>${segBtns('moneda',[['ARS','Pesos'],['USD','Dólares']],c.moneda)}</div>
     <div class="field"><span class="flabel">El monto es</span>${segBtns('modo',[['total','Total'],['cuota','Por cuota']],'total')}</div></div>
     <div class="field"><span class="flabel">Cuotas</span>${segBtns('cuotas',cuotasOpts.map(n=>[n,n===1?'1 pago':n]),c.cuotas)}</div>
@@ -830,7 +832,7 @@ function sheetCompra(c,preset){
     root.querySelector('#c-desc').addEventListener('input',e=>{const v=e.target.value;const d=detectCat(v);if(d&&!catManual){pick('cat',d);syncApp()}if(/rappi/i.test(v))pick('app','rappi');else if(/pedidos ?ya/i.test(v))pick('app','pedidosya')});
     if(nuevo)setTimeout(()=>root.querySelector('#c-monto').focus(),60);
     root.querySelector('#c-ok').onclick=()=>{
-      const m=parseMonto(root.querySelector('#c-monto').value);if(!m){root.querySelector('#c-monto').focus();toast('Poné el monto');return}
+      const m=Math.abs(parseMonto(root.querySelector('#c-monto').value))*Number(segVal(root,'signo')||1);if(!m){root.querySelector('#c-monto').focus();toast('Poné el monto');return}
       const n=Number(segVal(root,'cuotas'));const cat=segVal(root,'cat');const data={cat,app:cat==='delivery'?segVal(root,'app'):'',desc:root.querySelector('#c-desc').value.trim(),monto:segVal(root,'modo')==='cuota'?m*n:m,moneda:segVal(root,'moneda'),cuotas:n,fecha:root.querySelector('#c-fecha').value||iso(today()),tarjeta:segVal(root,'tarjeta')};
       if(nuevo)S.compras.push({id:uid(),...data});else Object.assign(c,data,{ejemplo:false});
       save();closeSheet();render();toast(nuevo?'Compra guardada':'Cambios guardados');
@@ -875,7 +877,7 @@ async function pdfLineas(pdfjs, data){
   return out;
 }
 const MES_ES={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,set:9,oct:10,nov:11,dic:12};
-const numAR=s=>Number(String(s).replace(/\./g,'').replace(',','.'));
+const numAR=s=>{s=String(s).trim();const neg=/-$/.test(s)||/^-/.test(s);const v=Number(s.replace(/-/g,'').replace(/\./g,'').replace(',','.'));return neg?-v:v};
 function parseResumen(lines){
   const txt=lines.join('\n');
   const r={fechas:[],total:null,perc:0,consumos:[],marca:/master/i.test(txt)?'master':/visa/i.test(txt)?'visa':'',ult4:[...new Set([...txt.matchAll(/TARJETA\s+(\d{4})\b/gi)].map(x=>x[1]))]};
@@ -884,7 +886,7 @@ function parseResumen(lines){
   for(const l of lines){
     if(/TOTAL A PAGAR/i.test(l)&&!r.total){const n=l.match(/-?[\d.]+,\d{2}/g)||[];r.total={ars:n[0]?numAR(n[0]):0,usd:n[1]?numAR(n[1]):0}}
     if(/DB\.?\s*RG\s*5617/i.test(l)){const n=l.match(/-?[\d.]+,\d{2}/g)||[];if(n.length)r.perc+=numAR(n[n.length-1])}
-    const c=l.match(/^\s*(\d{2})-(\d{2})-(\d{2})\s+(?:[*A-Z]\s+)?(.+?)\s+(?:(\d{2})\/(\d{2})\s+)?(\d{5,7})\s+(-?[\d.]+,\d{2})\s*$/);
+    const c=l.match(/^\s*(\d{2})-(\d{2})-(\d{2})\s+(?:[*A-Z]\s+)?(.+?)\s+(?:(\d{2})\/(\d{2})\s+)?(\d{5,7})\s+(-?[\d.]+,\d{2}-?)\s*$/);
     if(c){
       let desc=c[4].trim(),moneda='ARS';
       const u=desc.match(/USD\s*([\d.]+,\d{2})?\s*$/);
@@ -957,7 +959,7 @@ function sheetImport(r){
     const draw=()=>{
       const t=S.tarjetas.find(t=>t.id===segVal(root,'imptar'));const pl=planImport(r,t);
       const cuotas=pl.nuevas.filter(c=>c.cuotas>1),sueltas=pl.nuevas.filter(c=>c.cuotas===1);
-      const del=sueltas.filter(c=>c.cat==='delivery');
+      const del=sueltas.filter(c=>c.cat==='delivery'&&c.monto>0);const devs=pl.nuevas.filter(c=>c.monto<0);
       const nRes=c=>pl.k-c.inicio+1; // cuota que figura en este resumen
       const mesRes=MESES[parseD(r.fechas[2]).getMonth()];
       out.innerHTML=`<div class="stack">
@@ -968,7 +970,8 @@ function sheetImport(r){
         <div class="kv"><span>Próximo cierre</span><b>${r.fechas[4]?F(4)+' · vence '+F(5):'—'}</b></div>
         <hr class="kv-sep">
         <div class="kv"><span>Compras en cuotas nuevas</span><b class="num">${cuotas.length}</b></div>
-        <div class="kv"><span>Compras en 1 pago</span><b class="num">${sueltas.length}${del.length?` <span class="muted" style="font-weight:400">(${del.length} delivery)</span>`:''}</b></div>
+        <div class="kv"><span>Compras en 1 pago</span><b class="num">${sueltas.length-devs.filter(c=>c.cuotas===1).length}${del.length?` <span class="muted" style="font-weight:400">(${del.length} delivery)</span>`:''}</b></div>
+        ${devs.length?`<div class="kv"><span>Devoluciones (se restan)</span><b class="num" style="color:var(--ok)">${devs.length} · ${ars(devs.reduce((a,c)=>a+(c.moneda==='USD'?c.monto*S.tc:c.monto),0))}</b></div>`:''}
         ${pl.dup.length?`<div class="kv"><span>Ya estaban cargadas</span><b class="num">${pl.dup.length}</b></div>`:''}
         ${pl.fijas.length?`<div class="kv"><span>Suscripciones que ya tenés como fijo</span><b class="num">${pl.fijas.length}</b></div>`:''}
         ${pl.fix.length?`<div class="kv"><span>Corrijo la cantidad de cuotas</span><b>${pl.fix.map(f=>esc(f.x.desc)+' → '+f.cuotas).join(', ')}</b></div>`:''}
@@ -981,7 +984,7 @@ function sheetImport(r){
       ${sueltas.length?`<details class="more"><summary>Compras en 1 pago (${sueltas.length})</summary>
         <div class="tbl-wrap"><div class="tbl-scroll"><table class="tbl">
           <thead><tr><th>Compra</th><th class="r">Monto</th></tr></thead>
-          <tbody>${sueltas.map(c=>`<tr><td class="name">${esc(c.desc)}${c.cat==='delivery'?' <span class="chip">Delivery</span>':''}<div class="sub">${fmtD(parseD(c.fecha))}</div></td><td class="r num">${money(c.monto,c.moneda)}</td></tr>`).join('')}</tbody>
+          <tbody>${sueltas.map(c=>`<tr><td class="name">${esc(c.desc)}${c.cat==='delivery'?' <span class="chip">Delivery</span>':''}${c.monto<0?' <span class="chip ok">Devolución</span>':''}<div class="sub">${fmtD(parseD(c.fecha))}</div></td><td class="r num">${money(c.monto,c.moneda)}</td></tr>`).join('')}</tbody>
         </table></div></div></details>`:''}
       <p class="hint" style="margin:0">El PDF se lee en tu dispositivo: no se sube a ningún lado. Solo se guardan las fechas, los totales y las compras.</p>
       <button class="btn" id="imp-ok">Importar</button></div>`;
