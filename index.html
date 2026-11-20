@@ -175,6 +175,15 @@ button{cursor:pointer}
 .tabbar .add span.plus{width:40px;height:40px;margin-top:-4px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:26px;line-height:1;font-weight:500}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:50;background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;font-weight:500}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
+/* En pantallas anchas, el panel de abajo pasa a ser un modal centrado */
+@media (min-width:720px){
+  .scrim{background:rgba(8,14,20,.55);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  .sheet{left:50%;right:auto;bottom:auto;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100vw - 48px));max-height:min(86vh,860px);
+    border-radius:18px;border:1px solid var(--line);box-shadow:0 24px 64px rgba(0,0,0,.35);padding:22px 24px 24px}
+  .sheet .grab{display:none}
+  .sheet-head{position:sticky;top:-22px;margin-top:-22px;padding-top:22px;padding-bottom:6px;background:var(--bg);z-index:1}
+  @media (prefers-reduced-motion:no-preference){.sheet{animation:pop .18s ease-out}@keyframes pop{from{transform:translate(-50%,-48%) scale(.98);opacity:0}}}
+}
 </style>
 </head>
 <body>
@@ -191,7 +200,7 @@ button{cursor:pointer}
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const LSKEY='proximo-resumen-v1';
-const APP_VERSION='1.1.2'; // 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible
+const APP_VERSION='1.1.3'; // 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
 const COLORS=['#2B55C9','#C2541B','#1F8A6A','#8A4FB8'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
