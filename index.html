@@ -94,6 +94,12 @@ button{cursor:pointer}
 .gear svg{width:20px;height:20px}
 .top-r{display:flex;align-items:center;gap:10px}
 .rank{display:flex;flex-direction:column;gap:2px}
+.difbox{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:var(--r);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);background:var(--warn-bg)}
+.difbox .t{font-family:var(--f-display);font-weight:700;font-size:16px;color:var(--warn)}
+.difbox .tbl-wrap{background:var(--surface)}
+.dif{font-size:12.5px;color:var(--warn);margin-top:2px;font-weight:600}
+mark.chg{background:color-mix(in srgb,var(--warn) 25%,transparent);color:var(--ink);border-radius:4px;padding:0 3px}
+.difbox .tbl td.name{width:50%}
 .row.is-paid .name{text-decoration:line-through;color:var(--muted)}
 .row.is-paid .amt{color:var(--muted)}
 .mesnav{display:flex;align-items:center;gap:12px}
@@ -233,7 +239,7 @@ details.more .tbl-wrap{margin-top:10px}
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const LSKEY='proximo-resumen-v1';
-const APP_VERSION='1.3.0'; // 1.3.0 ahorro posible del mes en dólares · 1.2.4 próximos meses incluye el resumen cerrado sin vencer · 1.2.3 aviso de vencimiento desde 2 días antes · 1.2.2 fecha de pago automática, nota al crear, tope explicado · 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
+const APP_VERSION='1.4.0'; // 1.4.0 compara lo cargado a mano con el resumen · 1.3.0 ahorro posible del mes en dólares · 1.2.4 próximos meses incluye el resumen cerrado sin vencer · 1.2.3 aviso de vencimiento desde 2 días antes · 1.2.2 fecha de pago automática, nota al crear, tope explicado · 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
 const COLORS=['#2B55C9','#C2541B','#1F8A6A','#8A4FB8'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
@@ -963,19 +969,51 @@ function esFijo(t,desc,monto,moneda){
   const dt=toks(desc).map(w=>w==='anthropic'?'claude':w);
   return S.fijos.some(f=>f.medio===t.id&&f.moneda===moneda&&Math.abs(f.monto-monto)<=Math.max(1,f.monto*.15)&&toks(f.nombre).some(w=>dt.some(d=>d.startsWith(w)||w.startsWith(d))));
 }
+/* parecido entre nombres de comercio (0 a 1): tolera mayúsculas, acentos, espacios y sufijos */
+const normN=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
+function simNombre(a,b){
+  a=normN(a);b=normN(b);if(!a||!b)return 0;if(a===b)return 1;
+  if(a.length>=4&&b.length>=4&&(a.includes(b)||b.includes(a)))return .9;
+  const bg=x=>{const m=new Map();for(let i=0;i<x.length-1;i++){const g=x.slice(i,i+2);m.set(g,(m.get(g)||0)+1)}return m};
+  const A=bg(a),B=bg(b);let inter=0;A.forEach((v,g)=>{inter+=Math.min(v,B.get(g)||0)});
+  return 2*inter/((a.length-1)+(b.length-1)||1);
+}
+const diasEntre=(a,b)=>Math.round(Math.abs(parseD(a)-parseD(b))/864e5);
 function planImport(r,t){
   const ci=parseD(r.fechas[2]);const k=keyOf(ci.getFullYear(),ci.getMonth());
-  const nuevas=[],dup=[],fijas=[],fix=[];
+  const pdf=[],dup=[],fijas=[];
   r.consumos.forEach(c=>{
-    const l=limpiarDesc(c.descRaw);const cuotaMonto=c.monto;const inicio=k-(c.cuotaN-1);
+    const l=limpiarDesc(c.descRaw);
     if(c.cuotaM===1&&esFijo(t,l.desc,c.monto,c.moneda)){fijas.push(l.desc);return}
-    const ya=S.compras.find(x=>x.tarjeta===t.id&&((x.comp&&x.comp===c.comp&&x.fecha===c.fecha)||
-      (c.cuotaM>1&&x.cuotas>1&&Math.abs(x.monto/x.cuotas-cuotaMonto)<1.5&&inicioDe(t,x)===inicio)||
-      (c.cuotaM===1&&x.cuotas===1&&x.fecha===c.fecha&&x.monto>=c.monto-1&&x.monto<=c.monto+2500)));
-    if(ya){if(ya.cuotas!==c.cuotaM)fix.push({x:ya,cuotas:c.cuotaM,monto:Math.round(cuotaMonto*c.cuotaM*100)/100});else dup.push(l.desc);return}
-    nuevas.push({id:uid(),desc:l.desc,monto:Math.round(cuotaMonto*c.cuotaM*100)/100,moneda:c.moneda,cuotas:c.cuotaM,fecha:c.fecha,tarjeta:t.id,inicio,comp:c.comp,cat:l.cat||detectCat(l.desc)||'',app:l.app,origen:'pdf'});
+    // mismo comprobante ya importado antes (subiste el mismo PDF dos veces)
+    if(S.compras.some(x=>x.tarjeta===t.id&&x.comp&&x.comp===c.comp&&x.fecha===c.fecha)){dup.push(l.desc);return}
+    pdf.push({id:uid(),desc:l.desc,monto:Math.round(c.monto*c.cuotaM*100)/100,cuotaMonto:c.monto,moneda:c.moneda,cuotas:c.cuotaM,fecha:c.fecha,tarjeta:t.id,inicio:k-(c.cuotaN-1),comp:c.comp,cat:l.cat||detectCat(l.desc)||'',app:l.app,origen:'pdf'});
   });
-  return {k,nuevas,dup,fijas,fix};
+  // lo que cargaste a mano que debería figurar en este resumen
+  const manual=S.compras.filter(x=>x.tarjeta===t.id&&!x.comp&&(()=>{const i0=inicioDe(t,x);return i0<=k&&k<i0+x.cuotas})());
+  const cands=[];
+  manual.forEach(m=>pdf.forEach(p=>{
+    if(m.moneda!==p.moneda)return;
+    const am=m.monto/m.cuotas,ap=p.cuotaMonto;const dm=Math.abs(am-ap),rel=dm/Math.max(1,Math.abs(ap));
+    const ns=simNombre(m.desc,p.desc);const dd=diasEntre(m.fecha,p.fecha);
+    if(!(ns>=.45||(rel<=.1&&dd<=3)||(dm<1&&dd<=5)))return;
+    const score=ns*2+(dm<1?1.5:Math.max(0,1-rel))+(dd===0?.6:dd<=3?.3:0)+(m.cuotas===p.cuotas?.3:0);
+    cands.push({m,p,score,ns,dm,dd});
+  }));
+  cands.sort((a,b)=>b.score-a.score);
+  const usadoM=new Set(),usadoP=new Set(),pares=[];
+  cands.forEach(c=>{if(usadoM.has(c.m)||usadoP.has(c.p))return;usadoM.add(c.m);usadoP.add(c.p);
+    const dif=[];
+    if(c.dm>=1)dif.push({t:'monto',txt:`${money(c.m.monto/c.m.cuotas,c.m.moneda)} → ${money(c.p.cuotaMonto,c.p.moneda)}${c.m.cuotas>1||c.p.cuotas>1?' por cuota':''}`});
+    if(c.dd>0)dif.push({t:'fecha',txt:`${fmtD(parseD(c.m.fecha))} → ${fmtD(parseD(c.p.fecha))}`});
+    if(c.m.cuotas!==c.p.cuotas)dif.push({t:'cuotas',txt:`${c.m.cuotas} → ${c.p.cuotas} cuotas`});
+    pares.push({m:c.m,p:c.p,dif});
+  });
+  const iguales=pares.filter(x=>!x.dif.length),distintos=pares.filter(x=>x.dif.length);
+  const sinPdf=manual.filter(m=>!usadoM.has(m));
+  const nuevas=pdf.filter(p=>!usadoP.has(p));
+  iguales.forEach(x=>dup.push(x.m.desc));
+  return {k,nuevas,dup,fijas,iguales,distintos,sinPdf};
 }
 function sheetImport(r){
   if(!S.tarjetas.length){toast('Agregá una tarjeta en Ajustes');return}
@@ -994,6 +1032,7 @@ function sheetImport(r){
       const cuotas=pl.nuevas.filter(c=>c.cuotas>1),sueltas=pl.nuevas.filter(c=>c.cuotas===1);
       const del=sueltas.filter(c=>c.cat==='delivery'&&c.monto>0);const devs=pl.nuevas.filter(c=>c.monto<0);
       const nRes=c=>pl.k-c.inicio+1; // cuota que figura en este resumen
+      const hayDif=pl.distintos.length>0||pl.sinPdf.length>0;
       const mesRes=MESES[parseD(r.fechas[2]).getMonth()];
       out.innerHTML=`<div class="stack">
       <div class="card"><div class="kv-group">
@@ -1005,9 +1044,9 @@ function sheetImport(r){
         <div class="kv"><span>Compras en cuotas nuevas</span><b class="num">${cuotas.length}</b></div>
         <div class="kv"><span>Compras en 1 pago</span><b class="num">${sueltas.length-devs.filter(c=>c.cuotas===1).length}${del.length?` <span class="muted" style="font-weight:400">(${del.length} delivery)</span>`:''}</b></div>
         ${devs.length?`<div class="kv"><span>Devoluciones (se restan)</span><b class="num" style="color:var(--ok)">${devs.length} · ${ars(devs.reduce((a,c)=>a+(c.moneda==='USD'?c.monto*S.tc:c.monto),0))}</b></div>`:''}
-        ${pl.dup.length?`<div class="kv"><span>Ya estaban cargadas</span><b class="num">${pl.dup.length}</b></div>`:''}
+        ${pl.dup.length?`<div class="kv"><span>Ya las tenías cargadas igual</span><b class="num">${pl.dup.length}</b></div>`:''}
         ${pl.fijas.length?`<div class="kv"><span>Suscripciones que ya tenés como fijo</span><b class="num">${pl.fijas.length}</b></div>`:''}
-        ${pl.fix.length?`<div class="kv"><span>Corrijo la cantidad de cuotas</span><b>${pl.fix.map(f=>esc(f.x.desc)+' → '+f.cuotas).join(', ')}</b></div>`:''}
+
       </div></div>
       ${cuotas.length?`<section class="stack" style="gap:8px"><h3 class="sec-t">Compras en cuotas <span class="muted" style="font-weight:400;font-size:14px">· cuota del resumen de ${mesRes}</span></h3>
         <div class="tbl-wrap"><div class="tbl-scroll"><table class="tbl">
@@ -1020,7 +1059,23 @@ function sheetImport(r){
           <tbody>${sueltas.map(c=>`<tr><td class="name">${esc(c.desc)}${c.cat==='delivery'?' <span class="chip">Delivery</span>':''}${c.monto<0?' <span class="chip ok">Devolución</span>':''}<div class="sub">${fmtD(parseD(c.fecha))}</div></td><td class="r num">${money(c.monto,c.moneda)}</td></tr>`).join('')}</tbody>
         </table></div></div></details>`:''}
       <p class="hint" style="margin:0">El PDF se lee en tu dispositivo: no se sube a ningún lado. Solo se guardan las fechas, los totales y las compras.</p>
-      <button class="btn" id="imp-ok">Importar</button></div>`;
+      ${hayDif?'':'<button class="btn" id="imp-ok">Importar</button>'}</div>`;
+      if(hayDif){const box=document.createElement('section');box.className='difbox';box.innerHTML=`
+        <div class="t">Estos gastos no coinciden</div>
+        <p class="hint" style="margin:0">Comparé lo que cargaste a mano con lo que dice el banco. Revisalo antes de importar.</p>
+        ${pl.distintos.length?`<div class="tbl-wrap"><div class="tbl-scroll"><table class="tbl">
+          <thead><tr><th>Cargaste</th><th>En el resumen</th></tr></thead>
+          <tbody>${pl.distintos.map(x=>{const has=t=>x.dif.some(d=>d.t===t);const hi=(on,v)=>on?`<mark class="chg">${v}</mark>`:v;
+            const linea=(c,mine)=>`<div class="sub">${hi(has('fecha')&&!mine,fmtD(parseD(c.fecha)))} · ${hi(has('monto')&&!mine,money(c.monto,c.moneda))}${c.cuotas>1||has('cuotas')?' en '+hi(has('cuotas')&&!mine,c.cuotas+(c.cuotas===1?' pago':' cuotas')):''}</div>`;
+            const resta=has('monto')?(x.p.monto-x.m.monto):0;
+            return `<tr><td class="name">${esc(x.m.desc)}${linea(x.m,true)}</td><td class="name">${esc(x.p.desc)}${linea(x.p,false)}${resta?`<div class="dif">${resta>0?'+':'−'}${money(Math.abs(resta),x.p.moneda)} de diferencia</div>`:''}</td></tr>`}).join('')}</tbody></table></div></div>`:''}
+        ${pl.sinPdf.length?`<div class="stack" style="gap:6px"><b>Cargaste esto y no está en el resumen</b>
+          <div class="tbl-wrap"><div class="tbl-scroll"><table class="tbl"><tbody>${pl.sinPdf.map(m=>`<tr><td class="name">${esc(m.desc||'Compra')}<div class="sub">${fmtD(parseD(m.fecha))}${m.cuotas>1?' · '+m.cuotas+' cuotas':''}</div></td><td class="r num">${money(m.monto,m.moneda)}</td></tr>`).join('')}</tbody></table></div></div>
+          <span class="hint">Si aceptás, pasan al próximo resumen (a veces el banco las cobra después del cierre). Si no correspondía, borralas después.</span></div>`:''}
+        <p class="hint" style="margin:0">Si aceptás, las compras de la izquierda quedan como dice el banco (monto, fecha y cuotas). El nombre que les pusiste no cambia.</p>
+        <div class="btn-row"><button class="btn ghost" id="imp-no">No subir resumen</button><button class="btn" id="imp-ok">Aceptar diferencias e importar</button></div>`;
+        const st=out.querySelector('.stack');st.insertBefore(box,st.children[1]);
+        out.querySelector('#imp-no').onclick=()=>{closeSheet();toast('No se importó nada. Revisá y volvé a subirlo cuando quieras.')};}
       out.querySelector('#imp-ok').onclick=()=>{
         const k=pl.k;t.fechas=t.fechas||{};t.cerrados=t.cerrados||{};
         if(r.fechas[0])t.fechas[k-1]={cierre:r.fechas[0],vence:r.fechas[1]};
@@ -1028,7 +1083,8 @@ function sheetImport(r){
         if(r.fechas[4])t.fechas[k+1]={cierre:r.fechas[4],vence:r.fechas[5]};
         t.cerrados[k]={ars:r.total.ars,usd:r.total.usd,perc:r.perc||0};
         const cd=parseD(r.fechas[2]).getDate();if(cd)t.cierre=cd;const vd=r.fechas[5]?parseD(r.fechas[5]).getDate():parseD(r.fechas[3]).getDate();if(vd)t.vence=vd;
-        pl.fix.forEach(f=>{f.x.cuotas=f.cuotas;f.x.monto=f.monto});
+        [...pl.iguales,...pl.distintos].forEach(({m,p})=>{Object.assign(m,{monto:p.monto,cuotas:p.cuotas,fecha:p.fecha,inicio:p.inicio,comp:p.comp,moneda:p.moneda});if(!m.cat)m.cat=p.cat;if(!m.app&&p.app)m.app=p.app});
+        pl.sinPdf.forEach(m=>{m.inicio=inicioDe(t,m)+1});
         S.compras.push(...pl.nuevas);save();closeSheet();tab='inicio';render();
         toast(`Resumen importado: ${pl.nuevas.length} compras nuevas`);
       };
