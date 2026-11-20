@@ -232,7 +232,7 @@ details.more .tbl-wrap{margin-top:10px}
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const LSKEY='proximo-resumen-v1';
-const APP_VERSION='1.2.1'; // 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
+const APP_VERSION='1.2.2'; // 1.2.2 fecha de pago automática, nota al crear, tope explicado · 1.2.1 devoluciones · 1.2.0 gastos del mes (checklist mensual, notas, fecha de pago) + categorías por mes · 1.1.6 detecta la tarjeta por el número · 1.1.5 tablas en importar + sin scroll de fondo · 1.1.4 estado de conexión correcto · 1.0 Vercel+Firebase · 1.1 importar PDF · 1.1.1 botón en la home · 1.1.2 versión visible · 1.1.3 modal centrado en desktop
 const COLORS=['#2B55C9','#C2541B','#1F8A6A','#8A4FB8'];
 const uid=()=>Math.random().toString(36).slice(2,10);
 
@@ -350,7 +350,11 @@ function vInicio(){
   let meter='';
   if(tp!=null){
     const pct=tp>0?Math.min(100,r.est/tp*100):100;const over=r.est>tp;
-    meter=`<div class="meter"><div class="meter-row"><span>Tope para ahorrar ${metaTxt()}: ${ars(tp)}</span><span class="num">${over?'Te pasaste '+ars(r.est-tp):'Margen '+ars(tp-r.est)}</span></div><div class="meter-bar"><div class="meter-fill ${over?'over':''}" style="width:${pct}%"></div></div></div>`;
+    const g=fijosFuera(),mp=metaPesos();
+    const cuenta=`Sueldo ${ars(S.ingreso)} − gastos del mes ${ars(g)} − ahorro ${metaTxt()}${S.metaTipo==='USD'?' ('+ars(mp)+')':''}`;
+    meter=tp<=0?`<div class="meter"><div class="meter-row"><span><b style="color:var(--slab-ink)">No te queda lugar para la tarjeta</b></span><span class="num">faltan ${ars(-tp)}</span></div>
+      <div class="meter-bar"><div class="meter-fill over" style="width:100%"></div></div><div class="meter-row"><span>${cuenta} = ${ars(tp)}</span></div></div>`
+    :`<div class="meter"><div class="meter-row"><span>Podés gastar en tarjeta hasta ${ars(tp)} y seguir ahorrando ${metaTxt()}</span><span class="num">${over?'Te pasaste '+ars(r.est-tp):'Te quedan '+ars(tp-r.est)}</span></div><div class="meter-bar"><div class="meter-fill ${over?'over':''}" style="width:${pct}%"></div></div><div class="meter-row"><span>${cuenta}</span></div></div>`;
   }
   const hayCompras=S.compras.length||S.fijos.length;
   return `${header('Próximo resumen')}
@@ -524,7 +528,7 @@ function sheetGasto(f){
   openSheet(f.nombre,`
     <div class="field"><label for="g-monto">Monto de ${mkMes(key)}</label><input class="inp big-in num" id="g-monto" inputmode="decimal" value="${monto||''}" placeholder="0"></div>
     <div class="field"><span class="flabel">Estado</span>${segBtns('gpag',[['0','Sin pagar'],['1','Pagado']],r.pag?'1':'0')}</div>
-    <div class="field"><label for="g-fecha">Fecha de pago <span class="muted" style="font-weight:400">(opcional)</span></label><div class="btn-row" style="flex-wrap:nowrap"><input class="inp" type="date" id="g-fecha" value="${r.fecha||''}" style="flex:1"><button class="btn ghost" id="g-hoy" type="button" style="flex:none">Hoy</button></div></div>
+    <div class="field"><label for="g-fecha">Fecha de pago</label><div class="btn-row" style="flex-wrap:nowrap"><input class="inp" type="date" id="g-fecha" value="${r.fecha||''}" style="flex:1"><button class="btn ghost" id="g-hoy" type="button" style="flex:none">Hoy</button></div><span class="hint">Se pone sola cuando marcás el pago. Cambiala si pagaste otro día.</span></div>
     <div class="field"><label for="g-obs">Nota</label><textarea class="inp" id="g-obs" rows="3" placeholder="Ej: reclamar el descuento que me prometieron">${esc(f.obs||'')}</textarea><span class="hint">La vas a ver arriba de todo, todos los meses, hasta que la borres.</span></div>
     <details class="more"><summary>Más opciones</summary><div class="stack" style="margin-top:10px">
       <div class="field"><label for="g-nombre">Nombre</label><input class="inp" id="g-nombre" value="${esc(f.nombre)}"></div>
@@ -535,6 +539,7 @@ function sheetGasto(f){
     <button class="btn" id="g-ok">Guardar</button>`,root=>{
     wireSeg(root);
     root.querySelector('#g-hoy').onclick=()=>{root.querySelector('#g-fecha').value=iso(today());root.querySelectorAll('[data-seg="gpag"] button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v==='1')))};
+    root.querySelectorAll('[data-seg="gpag"] button').forEach(b=>b.addEventListener('click',()=>{const fe=root.querySelector('#g-fecha');if(b.dataset.v==='1'&&!fe.value)fe.value=iso(today());if(b.dataset.v==='0')fe.value=''}));
     root.querySelector('#g-fecha').onchange=e=>{if(e.target.value)root.querySelectorAll('[data-seg="gpag"] button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v==='1')))};
     root.querySelector('#g-ok').onclick=()=>{
       const m=parseMonto(root.querySelector('#g-monto').value);const pag=segVal(root,'gpag')==='1';
@@ -735,11 +740,11 @@ function bind(){
   document.querySelectorAll('[data-tab]').forEach(e=>e.onclick=()=>{tab=e.dataset.tab;render();window.scrollTo(0,0)});
   document.querySelectorAll('[data-go]').forEach(e=>e.onclick=()=>{tab=e.dataset.go;render();window.scrollTo(0,0)});
   document.querySelectorAll('[data-act]').forEach(e=>e.onclick=()=>act(e.dataset.act,e));
-  document.querySelectorAll('[data-pag]').forEach(e=>e.onclick=()=>{const key=mesSel||mkNow();const id=e.dataset.pag;const r=regMes(key,id)||{};const f=S.fijos.find(x=>x.id===id);setReg(key,id,{pag:!r.pag,monto:r.monto??montoMes(f,key),fecha:r.pag?'':(r.fecha||'')});save();render()});
+  document.querySelectorAll('[data-pag]').forEach(e=>e.onclick=()=>{const key=mesSel||mkNow();const id=e.dataset.pag;const r=regMes(key,id)||{};const f=S.fijos.find(x=>x.id===id);setReg(key,id,{pag:!r.pag,monto:r.monto??montoMes(f,key),fecha:r.pag?'':iso(today())});save();render();if(!r.pag)toast('Pagado hoy, '+fmtD(today()))});
   document.querySelectorAll('[data-cat]').forEach(e=>e.onclick=()=>{catSel=catSel===e.dataset.cat?null:e.dataset.cat;render()});
   const cp=document.querySelector('[data-seg="catper"]');if(cp)wireSeg(cp.parentElement,()=>{catK=Number(segVal(cp.parentElement,'catper'));catSel=null;render()});
   const cm=document.getElementById('cat-mes');if(cm)cm.onchange=()=>{catK=Number(cm.value);catSel=null;render()};
-  document.querySelectorAll('[data-pagt]').forEach(e=>e.onclick=()=>{const k=e.dataset.pagt;if(S.pagados[k]){delete S.pagados[k];if(S.pagFecha)delete S.pagFecha[k]}else S.pagados[k]=true;save();render()});
+  document.querySelectorAll('[data-pagt]').forEach(e=>e.onclick=()=>{const k=e.dataset.pagt;S.pagFecha=S.pagFecha||{};if(S.pagados[k]){delete S.pagados[k];delete S.pagFecha[k]}else{S.pagados[k]=true;S.pagFecha[k]=iso(today());toast('Pagado hoy, '+fmtD(today()))}save();render()});
   document.querySelectorAll('[data-gasto]').forEach(e=>e.onclick=()=>sheetGasto(S.fijos.find(f=>f.id===e.dataset.gasto)));
   document.querySelectorAll('[data-pagocard]').forEach(e=>e.onclick=()=>sheetPagoTarjeta(e.dataset.pagocard));
   document.querySelectorAll('[data-mes]').forEach(e=>e.onclick=()=>{const n=Number(e.dataset.mes);mesSel=n===0?null:mkAdd(mesSel||mkNow(),n);if(mesSel===mkNow())mesSel=null;render()});
@@ -765,7 +770,7 @@ function act(a,el){
   if(a==='exportar'){const t=JSON.stringify(S);(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Respaldo copiado')).catch(()=>toast('No se pudo copiar'));return}
   if(a==='cargar-total')return sheetTotal(el.dataset.t,Number(el.dataset.k));
   if(a==='nuevo-pedido')return sheetCompra(null,{cat:'delivery'});
-  if(a==='pagado'){S.pagados[el.dataset.key]=true;save();render();toast('Marcado como pagado');return}
+  if(a==='pagado'){S.pagados[el.dataset.key]=true;S.pagFecha=S.pagFecha||{};S.pagFecha[el.dataset.key]=iso(today());save();render();toast('Marcado como pagado');return}
   if(a==='ejemplo'){cargarEjemplo();return}
   if(a==='borrar-ejemplo'){S.compras=S.compras.filter(c=>!c.ejemplo);S.fijos=S.fijos.filter(f=>!f.ejemplo);S.ejemplo=false;save();render();toast('Ejemplos borrados');return}
   if(a==='nueva-tarjeta'){S.tarjetas.push({id:uid(),nombre:'Crédito '+(S.tarjetas.length+1),cierre:22,vence:5,color:COLORS[S.tarjetas.length%COLORS.length]});save();render();return}
@@ -843,21 +848,22 @@ function sheetCompra(c,preset){
 function sheetFijo(f,tipo0){
   const nuevo=!f;f=f||{nombre:'',monto:'',moneda:'ARS',medio:'debito',dia:'',tipo:tipo0||'fijo'};
   const medios=[...S.tarjetas.map(t=>[t.id,esc(t.nombre)]),['debito','Débito'],['transferencia','Transferencia'],['efectivo','Efectivo']];
-  openSheet(nuevo?(f.tipo==='variable'?'Nuevo presupuesto':'Nuevo gasto fijo'):'Editar gasto',`
+  openSheet(nuevo?'Nuevo gasto':'Editar gasto',`
     <div class="field"><label for="f-nombre">Nombre</label><input class="inp" id="f-nombre" placeholder="Ej: Alquiler, Netflix, Luz" value="${esc(f.nombre)}"></div>
     <div class="field"><label for="f-monto">Monto mensual</label><input class="inp big-in num" id="f-monto" inputmode="decimal" placeholder="0" value="${f.monto||''}"></div>
     <div class="field"><span class="flabel">Moneda</span>${segBtns('moneda',[['ARS','Pesos'],['USD','Dólares']],f.moneda)}</div>
-    <div class="field"><span class="flabel">Tipo</span>${segBtns('tipo',[['fijo','Fijo (se paga una vez)'],['variable','Presupuesto variable']],f.tipo||'fijo')}</div>
     <div class="field"><span class="flabel">Cómo lo pagás</span>${segBtns('medio',medios,f.medio)}</div>
-    <div class="field"><label for="f-dia">Día del mes que vence (opcional)</label><input class="inp num" id="f-dia" inputmode="numeric" value="${f.dia||''}"></div>
+    ${nuevo?`<div class="field"><span class="flabel">¿Ya lo pagaste este mes?</span>${segBtns('fpag',[['0','Todavía no'],['1','Sí, hoy']],'0')}</div>`:''}
+    <div class="field"><label for="f-obs">Nota <span class="muted" style="font-weight:400">(opcional)</span></label><textarea class="inp" id="f-obs" rows="2" placeholder="Ej: reclamar el descuento que me prometieron">${esc(f.obs||'')}</textarea><span class="hint">La vas a ver arriba de todo, todos los meses, hasta que la borres.</span></div>
     <div class="btn-row">${nuevo?'':'<button class="btn danger" id="f-del">Eliminar</button>'}<button class="btn" id="f-ok">${nuevo?'Guardar':'Guardar cambios'}</button></div>`,
   root=>{
     wireSeg(root);if(nuevo)setTimeout(()=>root.querySelector('#f-nombre').focus(),60);
     root.querySelector('#f-ok').onclick=()=>{
       const nombre=root.querySelector('#f-nombre').value.trim();const m=parseMonto(root.querySelector('#f-monto').value);
       if(!nombre||!m){toast('Completá nombre y monto');return}
-      const medio=segVal(root,'medio');const data={nombre,monto:m,moneda:segVal(root,'moneda'),tipo:segVal(root,'tipo'),medio,dia:parseInt(root.querySelector('#f-dia').value)||''};
-      if(nuevo){const t=S.tarjetas.find(t=>t.id===medio);S.fijos.push({id:uid(),...data,desde:t?abiertoDe(t):undefined,desdeMes:t?undefined:(mesSel||mkNow()),orden:S.fijos.length})}else Object.assign(f,data,{ejemplo:false});
+      const medio=segVal(root,'medio');const data={nombre,monto:m,moneda:segVal(root,'moneda'),tipo:f.tipo||'fijo',medio,obs:root.querySelector('#f-obs').value.trim()};
+      if(nuevo){const t=S.tarjetas.find(t=>t.id===medio);const nf={id:uid(),...data,desde:t?abiertoDe(t):undefined,desdeMes:t?undefined:(mesSel||mkNow()),orden:S.fijos.length};S.fijos.push(nf);
+        if(!t&&segVal(root,'fpag')==='1')setReg(mesSel||mkNow(),nf.id,{monto:m,pag:true,fecha:iso(today())})}else Object.assign(f,data,{ejemplo:false});
       save();closeSheet();render();toast('Gasto fijo guardado');
     };
     const del=root.querySelector('#f-del');if(del)del.onclick=()=>{if(del.dataset.c){S.fijos=S.fijos.filter(x=>x.id!==f.id);save();closeSheet();render();toast('Gasto eliminado')}else{del.dataset.c=1;del.textContent='Tocá para confirmar'}};
